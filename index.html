@@ -1,0 +1,1405 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Misi Cahaya Madinah - Petualangan 3D V2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            font-family: 'Nunito', sans-serif;
+            background-color: #bae6fd; /* Sky Blue Desert Sky */
+            touch-action: none; user-select: none; -webkit-user-select: none;
+        }
+
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; outline: none; }
+
+        /* Reticle / Crosshair */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 38px; height: 38px;
+            z-index: 10; pointer-events: none; display: none;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s;
+        }
+        
+        #crosshair::after {
+            content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 6px; height: 6px; background: #fbbf24; border-radius: 50%;
+            box-shadow: 0 0 10px #fef08a, 0 0 20px #fbbf24;
+        }
+
+        #crosshair-svg {
+            width: 100%; height: 100%;
+            stroke: #fef08a; stroke-width: 2.5; fill: none;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.8));
+        }
+
+        #crosshair.aiming-enemy {
+            transform: translate(-50%, -50%) scale(1.35) rotate(45deg);
+            filter: hue-rotate(-90deg) drop-shadow(0 0 12px #f87171);
+        }
+        #crosshair.aiming-enemy #crosshair-svg { stroke: #f87171; }
+        #crosshair.aiming-enemy::after { background: #f87171; box-shadow: 0 0 10px #fca5a5; }
+
+        #crosshair.aiming-scroll {
+            transform: translate(-50%, -50%) scale(1.25);
+            filter: hue-rotate(90deg) drop-shadow(0 0 12px #34d399);
+        }
+        #crosshair.aiming-scroll #crosshair-svg { stroke: #34d399; }
+        #crosshair.aiming-scroll::after { background: #34d399; box-shadow: 0 0 10px #6ee7b7; }
+
+        #ui-layer { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+        .interactive { pointer-events: auto; }
+
+        /* Bento UI Card Style */
+        .whimsical-card {
+            background: rgba(255, 255, 255, 0.93); backdrop-filter: blur(16px);
+            border-radius: 2rem; padding: 24px; box-shadow: 0 15px 35px rgba(14, 165, 233, 0.15);
+            border: 4px solid rgba(255, 255, 255, 0.95); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+        }
+        .whimsical-card.hoverable:hover { transform: translateY(-6px) scale(1.02); cursor: pointer; box-shadow: 0 20px 40px rgba(14, 165, 233, 0.25); }
+
+        @keyframes popIn { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .animate-pop { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        @keyframes floatBubble { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-12px) rotate(3deg); } }
+        .animate-bubble { animation: floatBubble 4s ease-in-out infinite; }
+
+        @keyframes damageFlash { 0% { background: rgba(239, 68, 68, 0.5); } 100% { background: transparent; } }
+        .damage-overlay { animation: damageFlash 0.6s ease-out; }
+        
+        @keyframes healFlash { 0% { background: rgba(52, 211, 153, 0.4); } 100% { background: transparent; } }
+        .heal-overlay { animation: healFlash 0.8s ease-out; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #0ea5e9; border-radius: 10px; }
+
+        /* Mobile Controls Overlay */
+        #mobile-controls { position: absolute; inset: 0; z-index: 15; pointer-events: none; display: none; }
+        #joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px; background: rgba(253, 224, 71, 0.25); border-radius: 50%; border: 3px solid rgba(253, 230, 138, 0.6); pointer-events: auto; backdrop-filter: blur(4px); }
+        #joystick-knob { position: absolute; top: 35px; left: 35px; width: 70px; height: 70px; background: rgba(253, 230, 138, 0.85); border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border: 2px solid rgba(255, 255, 255, 0.8); }
+        #look-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; pointer-events: auto; }
+        
+        .action-btn { position: absolute; border-radius: 50%; border: 4px solid white; pointer-events: auto; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; }
+        .action-btn:active { transform: scale(0.9); }
+        
+        #shoot-btn { bottom: 40px; right: 30px; width: 85px; height: 85px; background: linear-gradient(135deg, #fef08a, #eab308); box-shadow: 0 8px 20px rgba(234, 179, 8, 0.4); font-size: 36px; }
+        #jump-btn { bottom: 135px; right: 40px; width: 65px; height: 65px; background: linear-gradient(135deg, #a7f3d0, #10b981); box-shadow: 0 6px 15px rgba(16, 185, 129, 0.4); font-size: 26px; }
+
+        /* Minimap canvas (posisi pas di bawah tulisan skor) */
+        #minimap-container {
+            position: relative; width: 110px; height: 110px; margin-top: 4px;
+            border-radius: 50%; border: 3px solid white; background: rgba(15, 23, 42, 0.7);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2); overflow: hidden; pointer-events: auto;
+        }
+        #minimap { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+    
+    <div id="crosshair">
+        <svg id="crosshair-svg" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="11" stroke-dasharray="4 6" opacity="0.8"/>
+            <path d="M16 3 L16 8 M16 24 L16 29 M3 16 L8 16 M24 16 L29 16" />
+        </svg>
+    </div>
+    
+    <div id="damage-flash" class="absolute inset-0 z-10 pointer-events-none"></div>
+    <div id="heal-flash" class="absolute inset-0 z-10 pointer-events-none"></div>
+
+    <div id="ui-layer">
+        <!-- Intro & Loading Screen with Custom Transparent Background Image -->
+        <div id="intro-screen" class="interactive absolute inset-0 bg-slate-900 flex items-center justify-center p-4 z-50 overflow-hidden">
+            <!-- Background Image Layer (Transparan / Semi-Opaque) -->
+            <div class="absolute inset-0 bg-cover bg-center opacity-45 pointer-events-none transform scale-105" style="background-image: url('https://i.ibb.co.com/mrxb7sxW/1791220726074.jpg');"></div>
+            <!-- Soft Gradient Overlay -->
+            <div class="absolute inset-0 bg-gradient-to-br from-sky-900/60 via-teal-900/40 to-slate-900/70 pointer-events-none backdrop-blur-[2px]"></div>
+
+            <div class="absolute -top-12 -left-12 w-64 h-64 bg-white/20 rounded-full blur-2xl pointer-events-none animate-bubble"></div>
+            <div class="absolute bottom-10 right-10 w-80 h-80 bg-yellow-300/20 rounded-full blur-3xl pointer-events-none animate-bubble" style="animation-delay: 1.5s;"></div>
+            
+            <div class="max-w-md w-full text-center space-y-6 z-10">
+                <div class="flex justify-center mb-6 animate-bubble">
+                    <img src="https://i.ibb.co.com/rfLsBMkW/1791220840316.jpg" alt="Logo Misi Cahaya Madinah" class="w-40 h-40 object-cover rounded-3xl shadow-2xl border-4 border-white/90">
+                </div>
+                <h1 id="loading-text" class="text-3xl md:text-4xl font-black text-white drop-shadow-lg tracking-tight leading-tight">Memuat Dunia 3D Madinah...</h1>
+                
+                <div id="loading-container" class="w-full bg-white/30 rounded-full h-4 overflow-hidden shadow-inner backdrop-blur-md border border-white/50">
+                    <div id="loading-bar-fill" class="bg-gradient-to-r from-amber-400 to-emerald-400 h-full w-0 transition-all duration-300"></div>
+                </div>
+                
+                <button id="start-btn" class="hidden whimsical-card bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-600 text-white flex items-center justify-center gap-4 py-4 px-8 hoverable shadow-xl border-emerald-200 mx-auto w-full">
+                    <span class="text-2xl font-black tracking-wide drop-shadow-md">🚀 MULAI PETUALANGAN</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- HUD Layer -->
+        <div id="hud" class="hidden interactive absolute top-0 w-full p-4 flex justify-between items-start pointer-events-none">
+            <div class="flex flex-col gap-2 items-start">
+                <div class="flex gap-2 items-center">
+                    <div class="whimsical-card !p-3 !rounded-2xl flex items-center gap-1 pointer-events-auto shadow-md border-rose-200 bg-white/90">
+                        <span class="text-xl md:text-2xl tracking-tight" id="hearts">❤️❤️❤️❤️❤️</span>
+                    </div>
+                    <button onclick="openModal('petunjuk-modal')" class="whimsical-card !p-3 !rounded-2xl flex items-center justify-center pointer-events-auto shadow-md border-purple-200 bg-white/90 text-xl hoverable" title="Petunjuk Bermain">❓</button>
+                    <button id="audio-toggle-btn" onclick="toggleMute()" class="whimsical-card !p-3 !rounded-2xl flex items-center justify-center pointer-events-auto shadow-md border-amber-200 bg-white/90 text-xl hoverable" title="Musik / Suara">🔊</button>
+                </div>
+
+                <div class="whimsical-card !p-3 !rounded-2xl flex items-center gap-4 pointer-events-auto shadow-md font-black text-lg border-amber-200 bg-white/90">
+                    <div class="text-blue-600">🏆 <span id="score">0</span></div>
+                    <div class="text-amber-500">⭐ <span id="stars">0</span></div>
+                </div>
+
+                <!-- Mini-map pas di bawah tulisan skor -->
+                <div id="minimap-container">
+                    <canvas id="minimap" width="110" height="110"></canvas>
+                </div>
+            </div>
+
+            <!-- Boss Health Bar (Hidden initially) -->
+            <div id="boss-hp-bar-container" class="hidden absolute top-4 left-1/2 transform -translate-x-1/2 w-80 whimsical-card !p-3 !rounded-2xl border-rose-300 bg-white/95 text-center shadow-lg">
+                <div id="boss-hp-title" class="text-xs font-black text-rose-700 uppercase mb-1">👑 Boss Penjaga Cahaya Utama</div>
+                <div class="w-full bg-rose-100 rounded-full h-3 overflow-hidden border border-rose-300">
+                    <div id="boss-hp-fill" class="bg-gradient-to-r from-rose-500 to-amber-500 h-full w-full transition-all duration-300"></div>
+                </div>
+            </div>
+            
+            <div class="whimsical-card !p-4 !rounded-2xl pointer-events-auto shadow-md text-right w-60 border-indigo-200 bg-white/90">
+                <div class="text-xs font-bold text-indigo-700 mb-1.5">Progres Pembelajaran: <span id="progress-text">0/13</span></div>
+                <div class="w-full bg-indigo-100 rounded-full h-3.5 overflow-hidden shadow-inner">
+                    <div id="progress-bar" class="bg-gradient-to-r from-blue-400 to-indigo-500 h-full w-0 transition-all duration-500"></div>
+                </div>
+                <div id="gate-status" class="mt-2 text-xs font-bold text-slate-500 bg-slate-100 py-1 px-2.5 rounded-lg inline-block border border-slate-200">🔒 Gerbang Terkunci</div>
+            </div>
+        </div>
+
+        <!-- Instructions Modal -->
+        <div id="petunjuk-modal" class="interactive hidden absolute inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <div class="whimsical-card max-w-lg w-full animate-pop border-fuchsia-300 bg-fuchsia-50/95 relative max-h-[90vh] overflow-y-auto shadow-2xl">
+                <button onclick="closeModal('petunjuk-modal')" class="absolute top-4 right-5 text-fuchsia-400 hover:text-rose-500 text-4xl font-black transition-colors">&times;</button>
+                <div class="flex items-center gap-4 mb-6">
+                    <span class="text-5xl drop-shadow-md">🎮</span>
+                    <h2 class="text-3xl font-black text-fuchsia-900 tracking-tight">Cara Bermain</h2>
+                </div>
+                <ul class="space-y-3 font-bold text-fuchsia-900 text-sm md:text-base bg-white/90 p-5 rounded-3xl border-2 border-fuchsia-100 shadow-inner">
+                    <li class="flex items-center gap-3"><span class="bg-gradient-to-br from-fuchsia-100 to-pink-100 p-2 rounded-xl text-xl shadow-sm">👀</span> <span>Pandangan: <b>Mouse</b> atau <b>Usap Layar Kanan</b>.</span></li>
+                    <li class="flex items-center gap-3"><span class="bg-gradient-to-br from-fuchsia-100 to-pink-100 p-2 rounded-xl text-xl shadow-sm">🏃</span> <span>Bergerak: <b>WASD</b> (Keyboard) atau <b>Joystick</b> (HP).</span></li>
+                    <li class="flex items-center gap-3"><span class="bg-gradient-to-br from-fuchsia-100 to-pink-100 p-2 rounded-xl text-xl shadow-sm">🌉</span> <span>Seberangi <b>Jembatan Kayu</b> untuk melintasi sungai.</span></li>
+                    <li class="flex items-center gap-3"><span class="bg-gradient-to-br from-fuchsia-100 to-pink-100 p-2 rounded-xl text-xl shadow-sm">✨</span> <span>Tembak <b>Penjaga Ilmu 👻</b> untuk membuka soal tantangan.</span></li>
+                    <li class="flex items-center gap-3"><span class="bg-gradient-to-br from-fuchsia-100 to-pink-100 p-2 rounded-xl text-xl shadow-sm">📜</span> <span>Dekati <b>Gulungan Surat 📜</b> untuk membaca rangkuman materi.</span></li>
+                    <li class="flex items-center gap-3 text-rose-600 bg-rose-50 p-2 rounded-xl"><span class="bg-rose-100 p-1.5 rounded-lg text-xl">⚠️</span> <span>Waspada serangan tembakan bola energi hantu!</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Materi Modal -->
+        <div id="materi-modal" class="interactive hidden absolute inset-0 bg-slate-900/60 backdrop-blur flex items-center justify-center p-4 z-40">
+            <div class="whimsical-card max-w-lg w-full animate-pop border-amber-200 bg-gradient-to-b from-amber-50 to-orange-50 text-center">
+                <div class="text-6xl mb-3 animate-bubble drop-shadow-md">📜</div>
+                <h2 id="materi-title" class="text-3xl font-black text-amber-900 mb-3">Judul</h2>
+                <div class="bg-white/95 p-5 rounded-2xl shadow-inner mb-6 text-left border border-amber-100">
+                    <p id="materi-content" class="text-gray-800 font-bold leading-relaxed text-base md:text-lg"></p>
+                </div>
+                <div id="materi-bonus" class="hidden text-emerald-600 font-black text-xl mb-4 animate-bounce">💖 BONUS +1 ENERGI NYAWA DITEMUKAN!</div>
+                <button onclick="closeMateri()" class="bg-gradient-to-r from-amber-400 to-orange-500 text-white font-black text-lg py-3 px-8 rounded-full shadow-md hoverable w-full">LANJUTKAN PETUALANGAN</button>
+            </div>
+        </div>
+
+        <!-- Quiz Modal -->
+        <div id="quiz-modal" class="interactive hidden absolute inset-0 bg-indigo-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <div class="whimsical-card max-w-xl w-full animate-pop border-indigo-200 bg-white/95">
+                <div class="text-center mb-6">
+                    <span class="inline-block bg-indigo-100 text-indigo-800 font-black py-1 px-4 rounded-full text-xs mb-2 shadow-sm">TANTANGAN PENJAGA ILMU 👻</span>
+                    <p id="quiz-q" class="text-xl md:text-2xl font-black text-slate-800 leading-tight mt-2"></p>
+                </div>
+                
+                <div id="quiz-mc" class="grid grid-cols-1 sm:grid-cols-2 gap-3 hidden">
+                    <button onclick="submitAnswer(0)" class="bg-slate-50 hover:bg-indigo-50 border-2 border-slate-200 rounded-2xl p-4 text-left font-bold text-slate-700 hoverable flex items-center gap-3 group transition-colors"><span class="bg-indigo-100 text-indigo-700 rounded-lg w-8 h-8 flex items-center justify-center font-black group-hover:bg-indigo-500 group-hover:text-white transition-colors shadow-sm">A</span><span id="opt-0"></span></button>
+                    <button onclick="submitAnswer(1)" class="bg-slate-50 hover:bg-indigo-50 border-2 border-slate-200 rounded-2xl p-4 text-left font-bold text-slate-700 hoverable flex items-center gap-3 group transition-colors"><span class="bg-indigo-100 text-indigo-700 rounded-lg w-8 h-8 flex items-center justify-center font-black group-hover:bg-indigo-500 group-hover:text-white transition-colors shadow-sm">B</span><span id="opt-1"></span></button>
+                    <button onclick="submitAnswer(2)" class="bg-slate-50 hover:bg-indigo-50 border-2 border-slate-200 rounded-2xl p-4 text-left font-bold text-slate-700 hoverable flex items-center gap-3 group transition-colors"><span class="bg-indigo-100 text-indigo-700 rounded-lg w-8 h-8 flex items-center justify-center font-black group-hover:bg-indigo-500 group-hover:text-white transition-colors shadow-sm">C</span><span id="opt-2"></span></button>
+                    <button onclick="submitAnswer(3)" class="bg-slate-50 hover:bg-indigo-50 border-2 border-slate-200 rounded-2xl p-4 text-left font-bold text-slate-700 hoverable flex items-center gap-3 group transition-colors"><span class="bg-indigo-100 text-indigo-700 rounded-lg w-8 h-8 flex items-center justify-center font-black group-hover:bg-indigo-500 group-hover:text-white transition-colors shadow-sm">D</span><span id="opt-3"></span></button>
+                </div>
+
+                <div id="quiz-tf" class="flex gap-4 hidden mt-4">
+                    <button onclick="submitAnswerTF('BENAR')" class="flex-1 bg-emerald-50 border-4 border-emerald-200 rounded-3xl p-5 text-center font-black text-xl text-emerald-700 hoverable hover:bg-emerald-100 transition-colors">⭕ BENAR</button>
+                    <button onclick="submitAnswerTF('SALAH')" class="flex-1 bg-rose-50 border-4 border-rose-200 rounded-3xl p-5 text-center font-black text-xl text-rose-700 hoverable hover:bg-rose-100 transition-colors">❌ SALAH</button>
+                </div>
+
+                <div id="feedback-view" class="hidden text-center mt-4">
+                    <div id="fb-icon" class="text-6xl mb-2 animate-pop">✨</div>
+                    <h3 id="fb-title" class="text-3xl font-black mb-3">BENAR!</h3>
+                    <div class="bg-slate-100 p-4 rounded-xl mb-6 text-left border border-slate-200">
+                        <p id="fb-desc" class="text-slate-700 font-bold text-sm md:text-base"></p>
+                    </div>
+                    <button onclick="closeQuiz()" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-black py-3 rounded-xl hoverable transition-colors shadow-md text-lg">LANJUTKAN</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="death-modal" class="interactive hidden absolute inset-0 bg-rose-900/80 backdrop-blur flex items-center justify-center p-4 z-50">
+            <div class="whimsical-card max-w-sm w-full text-center border-rose-200 bg-rose-50">
+                <div class="text-6xl mb-4 animate-bounce">💔</div>
+                <h2 class="text-3xl font-black text-rose-800 mb-2">Energi Habis!</h2>
+                <p class="text-rose-700 font-bold mb-6">Kamu terkena serangan hantu. Mari isi ulang tenaga dan coba lagi!</p>
+                <button onclick="respawn()" class="w-full bg-rose-500 hover:bg-rose-600 text-white font-black py-3 rounded-xl hoverable transition-colors shadow-md text-lg">BANGKIT KEMBALI</button>
+            </div>
+        </div>
+
+        <div id="victory-screen" class="interactive hidden absolute inset-0 bg-white/95 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <div class="whimsical-card max-w-md w-full border-blue-300 bg-gradient-to-b from-blue-50 to-indigo-50 text-center relative overflow-hidden">
+                <div class="text-7xl mb-4 animate-bubble drop-shadow-lg z-10 relative">🎉</div>
+                <h1 class="text-4xl font-black text-indigo-800 mb-2 z-10 relative">MISI BERHASIL!</h1>
+                <p class="text-blue-700 font-bold mb-6 z-10 relative">Gerbang Cahaya Madinah Terbuka</p>
+                
+                <div class="bg-white rounded-2xl p-5 mb-6 shadow-md border-2 border-indigo-100 z-10 relative text-left">
+                    <div class="flex justify-between font-black text-slate-700 mb-2 text-lg">Skor Akhir: <span id="vic-score" class="text-blue-600 text-2xl">0</span></div>
+                    <div class="flex justify-between font-bold text-slate-600 text-lg">Jawaban Benar: <span id="vic-benar" class="text-emerald-600">0</span></div>
+                </div>
+                
+                <div class="mb-8 z-10 relative">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Gelar Pahlawan Pembelajar</p>
+                    <div id="vic-rank" class="inline-block bg-gradient-to-r from-amber-400 to-orange-500 text-white font-black px-6 py-2.5 rounded-full shadow-lg text-2xl transform -rotate-2 border-2 border-white">PEMIMPIN TELADAN</div>
+                </div>
+                <button onclick="location.reload()" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-black text-xl py-4 rounded-2xl shadow-xl hoverable z-10 relative transition-colors">🔄 MAIN LAGI</button>
+            </div>
+        </div>
+
+        <div id="interaction-prompt" class="hidden interactive absolute bottom-28 left-1/2 transform -translate-x-1/2 bg-slate-800/85 text-white px-6 py-3 rounded-full font-bold shadow-lg pointer-events-none backdrop-blur border border-white/30 animate-pulse text-base tracking-wide">
+            Dekati Gulungan Surat 📜
+        </div>
+    </div>
+
+    <!-- Mobile Controls Overlays -->
+    <div id="mobile-controls">
+        <div id="joystick-zone"><div id="joystick-knob"></div></div>
+        <div id="look-zone"></div>
+        <div id="jump-btn" class="action-btn">🦘</div>
+        <div id="shoot-btn" class="action-btn">🚀</div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
+
+        // Educational Content Data
+        const quizData = [
+            { id: 1, type: 'mc', q: "Mengapa Nabi Muhammad SAW memilih Madinah sebagai tempat hijrah dan pusat dakwah yang baru?", opts: ["Karena Madinah adalah kota kelahirannya", "Karena masyarakat Madinah lebih terbuka menerima Islam dan letaknya strategis", "Karena Madinah penuh dengan harta karun", "Karena beliau ingin berlibur ke Madinah"], ans: 1, desc: "Masyarakat Yatsrib (Madinah) telah meminta Nabi datang, dan kota ini sangat strategis secara geografis dan pertahanan." },
+            { id: 2, type: 'mc', q: "Pengorbanan terbesar kaum Muhajirin saat berhijrah dari Makkah ke Madinah demi mempertahankan akidah adalah...", opts: ["Rela meninggalkan harta benda, rumah, dan keluarga mereka di Makkah", "Membawa seluruh harta kekayaannya", "Berperang melawan seluruh penduduk Makkah sendirian", "Membangun benteng pertahanan di Makkah"], ans: 0, desc: "Mereka meninggalkan Makkah demi mempertahankan keimanan tanpa membawa kekayaan materi." },
+            { id: 3, type: 'mc', q: "Tindakan pertama kaum Ansar saat menyambut kaum Muhajirin yang datang tanpa membawa harta benda adalah...", opts: ["Menolak kedatangan mereka", "Menjual rumah mereka kepada kaum Muhajirin dengan harga mahal", "Menawarkan tempat tinggal, makanan, dan membagi harta mereka dengan ikhlas", "Menyuruh kaum Muhajirin mencari pekerjaan sendiri"], ans: 2, desc: "Kaum Ansar (penolong) dengan ikhlas membantu dan membagikan harta benda mereka." },
+            { id: 4, type: 'mc', q: "Selain sebagai tempat ibadah, Masjid Nabawi pada masa awal Madinah berfungsi sebagai pusat pemerintahan. Bukti dari fungsi tersebut adalah...", opts: ["Menjadi tempat menyimpan harta pribadi Nabi", "Menjadi pasar utama berdagang", "Menjadi tempat berlindung khusus keluarga Nabi", "Menjadi tempat bermusyawarah dan mengatur strategi pertahanan kota"], ans: 3, desc: "Masjid di zaman Nabi berfungsi sentral untuk pendidikan, pemerintahan, militer, dan sosial." },
+            { id: 5, type: 'mc', q: "Salah satu poin penting dalam Piagam Madinah adalah perlindungan bersama dan kebebasan beragama. Nilai kepemimpinan apa yang ditunjukkan Nabi Muhammad SAW?", opts: ["Memaksa semua penduduk memeluk satu agama", "Keadilan, toleransi, dan mengutamakan perdamaian", "Diskriminasi antar suku", "Keegoisan dan kekuasaan absolut"], ans: 1, desc: "Nabi menghargai pluralitas dan kebebasan beragama, menciptakan harmoni dalam masyarakat yang beragam." },
+            { id: 6, type: 'mc', q: "Ketika terjadi perselisihan antar suku di Madinah, Nabi Muhammad SAW memutuskan perkara berdasarkan kebenaran tanpa memihak. Sikap ini mencerminkan sifat...", opts: ["Sombong dan egois", "Ragu-ragu dan takut", "Pilih kasih dan membela keluarga", "Adil dan Bijaksana"], ans: 3, desc: "Sebagai pemimpin, beliau meletakkan keadilan di atas kepentingan golongan atau suku mana pun." },
+            { id: 7, type: 'mc', q: "Tujuan utama Nabi Muhammad SAW mempersaudarakan kaum Muhajirin dan Ansar secara spesifik adalah untuk...", opts: ["Membangun ikatan persaudaraan seiman yang kuat dan mengatasi kesulitan ekonomi Muhajirin", "Mengurangi jumlah penduduk asli Madinah", "Menguasai harta kaum Ansar", "Menghindari perang saudara di Makkah"], ans: 0, desc: "Ikatan ini di antaranya untuk mengatasi kesenjangan sosial ekonomi karena Muhajirin tiba tanpa harta." },
+            { id: 8, type: 'mc', q: "Andi adalah ketua kelas. Ada dua temannya bertengkar karena jadwal piket. Jika Andi meneladani kepemimpinan Nabi, yang harus dilakukan adalah...", opts: ["Menghukum keduanya tanpa bertanya alasannya", "Membiarkan mereka bertengkar sampai lelah", "Mengajak keduanya bermusyawarah mencari jalan keluar yang adil", "Membela teman yang paling kaya"], ans: 2, desc: "Nabi selalu mengedepankan dialog dan musyawarah untuk menyelesaikan masalah dengan seadil-adilnya." },
+            { id: 9, type: 'mc', q: "Piagam Madinah menetapkan bahwa jika kota Madinah diserang musuh dari luar, maka seluruh penduduk harus...", opts: ["Menyerahkan diri kepada musuh agar selamat", "Bekerja sama dan bersatu mempertahankan kota Madinah", "Melarikan diri meninggalkan kota", "Membiarkan kaum Muslimin saja yang berperang"], ans: 1, desc: "Setiap elemen warga negara Madinah memiliki kewajiban menjaga pertahanan negara bersama-sama." },
+            { id: 10, type: 'mc', q: "Strategi pertama yang dilakukan Nabi Muhammad SAW setelah tiba di Madinah untuk membangun masyarakat yang mandiri adalah...", opts: ["Membangun istana yang megah untuk tempat tinggal", "Mencetak mata uang baru", "Membangun masjid sebagai pusat kegiatan dan pembinaan umat", "Membentuk pasukan perang besar untuk menyerang Makkah"], ans: 2, desc: "Langkah perdana Nabi adalah membangun Masjid Quba dan Nabawi untuk mempersatukan umat dan membina moral." },
+            { id: 11, type: 'tf', q: "Kaum Muhajirin datang ke Madinah membawa kekayaan melimpah untuk dibagikan kepada kaum Ansar.", ans: "SALAH", desc: "SALAH. Justru kaum Muhajirin datang dengan tangan kosong setelah meninggalkan harta mereka di Makkah." },
+            { id: 12, type: 'tf', q: "Piagam Madinah adalah bukti nyata bahwa Nabi Muhammad SAW menghargai hak asasi manusia dan keberagaman beragama.", ans: "BENAR", desc: "BENAR. Piagam Madinah menjamin perlindungan bagi setiap penganut agama tanpa adanya paksaan." },
+            { id: 13, type: 'tf', q: "Nabi Muhammad SAW mempersaudarakan Abdurrahman bin Auf (Muhajirin) dengan Sa'ad bin Rabi' (Ansar) sebagai teladan ikatan persaudaraan.", ans: "BENAR", desc: "BENAR. Sa'ad menawarkan setengah hartanya, namun Abdurrahman memilih dibantu dicarikan jalan ke pasar." }
+        ];
+
+        const materiData = [
+            { id: 'm1', title: "Hijrah ke Madinah", text: "Nabi Muhammad SAW bersama kaum Muslimin melakukan hijrah dari Makkah menuju Madinah. Hijrah dilakukan untuk mendapatkan tempat yang aman dalam menjalankan dan menyebarkan ajaran Islam. Diperlukan kesabaran dan pengorbanan besar.", pos: {x: -15, z: -15}, bonus: false },
+            { id: 'm2', title: "Muhajirin dan Ansar", text: "Kaum Muhajirin adalah kaum Muslimin yang berhijrah dari Makkah ke Madinah. Kaum Ansar adalah penduduk Madinah yang menerima dan membantu kaum Muhajirin dengan penuh kasih sayang.", pos: {x: 15, z: -35}, bonus: false },
+            { id: 'm3', title: "Membangun Masjid", text: "Nabi Muhammad SAW membangun masjid sebagai pusat ibadah dan kehidupan masyarakat. Masjid juga menjadi tempat belajar, berkumpul, dan membangun persaudaraan umat.", pos: {x: -12, z: -55}, bonus: true }, 
+            { id: 'm4', title: "Persaudaraan", text: "Nabi Muhammad SAW mempersaudarakan kaum Muhajirin dan Ansar. Persaudaraan tersebut mengajarkan kepedulian, saling menolong, berbagi, dan hidup rukun tanpa membeda-bedakan.", pos: {x: 0, z: -92}, bonus: false },
+            { id: 'm5', title: "Piagam Madinah", text: "Piagam Madinah merupakan kesepakatan yang mengatur kehidupan masyarakat Madinah. Mengajarkan pentingnya hidup bersama secara tertib, saling menghormati, dan menjaga keamanan.", pos: {x: -16, z: -115}, bonus: false },
+            { id: 'm6', title: "Kepemimpinan Nabi", text: "Dalam memimpin masyarakat, Nabi Muhammad SAW menunjukkan sifat yang patut diteladani: Adil, Amanah, Jujur, Bijaksana, Peduli, dan Suka bermusyawarah.", pos: {x: 14, z: -135}, bonus: false }
+        ];
+
+        let scene, camera, renderer, wand, wandStarMat;
+        let ghosts = [], scrolls = [], playerProjs = [], enemyProjs = [], particles = [], dustParticles = [];
+        let bossGhost = null, gateGroup, gateLeft, gateRight;
+        let clock = new THREE.Clock();
+        
+        let state = {
+            running: false, paused: false, muted: false,
+            score: 0, correct: 0, hp: 5, maxHp: 5,
+            qQueue: [...quizData], qCurrent: null,
+            gateOpen: false, lastDamageTime: 0,
+            velocityY: 0, isGrounded: true,
+            bossMinionsCount: 0, isBossQuiz: false
+        };
+
+        const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        let pointerLocked = false, joy = { x: 0, y: 0, active: false }, lookTouchId = null;
+
+        const raycaster = new THREE.Raycaster();
+        const centerScreen = new THREE.Vector2(0, 0);
+
+        let actx;
+        const audio = {
+            playMelody: () => {
+                if(!actx || state.muted) return;
+                const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]; 
+                let beatTime = 60 / 125;
+                
+                setInterval(() => {
+                    if(state.paused || !state.running || state.muted || actx.state !== 'running') return;
+                    let time = actx.currentTime;
+                    let osc = actx.createOscillator();
+                    let gain = actx.createGain();
+                    
+                    osc.type = 'triangle';
+                    osc.frequency.value = notes[Math.floor(Math.random()*notes.length)] * (Math.random()>0.7 ? 2 : 1);
+                    
+                    osc.connect(gain); gain.connect(actx.destination);
+                    
+                    gain.gain.setValueAtTime(0, time);
+                    gain.gain.linearRampToValueAtTime(0.06, time + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, time + beatTime * 0.7);
+                    
+                    osc.start(time); osc.stop(time + beatTime);
+                }, beatTime * 1000);
+            },
+            sfx: (type) => {
+                if(!actx || state.muted || actx.state !== 'running') return;
+                let t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+                o.connect(g); g.connect(actx.destination);
+                
+                if(type==='shoot') {
+                    o.type='square'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(110, t+0.2); 
+                    g.gain.setValueAtTime(0.05, t); g.gain.linearRampToValueAtTime(0, t+0.2); 
+                    o.start(t); o.stop(t+0.2); 
+                }
+                else if(type==='hit') {
+                    o.type='sawtooth'; o.frequency.setValueAtTime(150, t); o.frequency.linearRampToValueAtTime(50, t+0.3); 
+                    g.gain.setValueAtTime(0.15, t); g.gain.linearRampToValueAtTime(0, t+0.3); 
+                    o.start(t); o.stop(t+0.3); 
+                }
+                else if(type==='heal') {
+                    o.type='sine'; o.frequency.setValueAtTime(440, t); o.frequency.linearRampToValueAtTime(880, t+0.2); o.frequency.linearRampToValueAtTime(1046, t+0.4);
+                    g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0, t+0.5); 
+                    o.start(t); o.stop(t+0.5); 
+                }
+                else if(type==='correct') {
+                    o.type='sine'; o.frequency.setValueAtTime(523.25, t); o.frequency.setValueAtTime(659.25, t+0.1); o.frequency.setValueAtTime(783.99, t+0.2); 
+                    g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0, t+0.5); 
+                    o.start(t); o.stop(t+0.5); 
+                }
+                else if(type==='wrong') {
+                    o.type='triangle'; o.frequency.setValueAtTime(250, t); o.frequency.linearRampToValueAtTime(100, t+0.4); 
+                    g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0, t+0.4); 
+                    o.start(t); o.stop(t+0.4); 
+                }
+                else if(type==='jump') {
+                    o.type='sine'; o.frequency.setValueAtTime(150, t); o.frequency.linearRampToValueAtTime(320, t+0.15); 
+                    g.gain.setValueAtTime(0.08, t); g.gain.linearRampToValueAtTime(0, t+0.15); 
+                    o.start(t); o.stop(t+0.15); 
+                }
+                else if(type==='win') {
+                    o.type='square'; o.frequency.setValueAtTime(440, t); o.frequency.linearRampToValueAtTime(880, t+1); 
+                    g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0, t+1.5); 
+                    o.start(t); o.stop(t+1.5); 
+                }
+            }
+        };
+
+        window.toggleMute = () => {
+            state.muted = !state.muted;
+            document.getElementById('audio-toggle-btn').innerText = state.muted ? "🔇" : "🔊";
+        };
+
+        function createRainbowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 0, 256);
+            grad.addColorStop(0.0, '#ff0000');
+            grad.addColorStop(0.17, '#ff7f00');
+            grad.addColorStop(0.33, '#ffff00');
+            grad.addColorStop(0.5, '#00ff00');
+            grad.addColorStop(0.67, '#0000ff');
+            grad.addColorStop(0.83, '#4b0082');
+            grad.addColorStop(1.0, '#8b00ff');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 16, 256);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xbae6fd); // Sky Blue
+            scene.fog = new THREE.FogExp2(0xbae6fd, 0.008);
+
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 280);
+            camera.rotation.order = 'YXZ';
+            camera.position.set(0, 1.8, 20);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            const ambLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const dirLight = new THREE.DirectionalLight(0xfffbeb, 0.9);
+            dirLight.position.set(30, 60, 30);
+            scene.add(ambLight, dirLight);
+
+            buildEnvironment();
+            createBridge();
+            createWand();
+            spawnScrolls();
+            spawnGhosts();
+            spawnBoss();
+            buildGate();
+            createDustEffect();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Procedural Palm Tree Creation (Pohon Kurma)
+        function createPalmTree() {
+            let tree = new THREE.Group();
+            
+            let trunkMat = new THREE.MeshLambertMaterial({color: 0x92400e});
+            let trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 7, 8);
+            let trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 3.5;
+            trunk.rotation.z = (Math.random() - 0.5) * 0.15;
+            tree.add(trunk);
+
+            let leafMat = new THREE.MeshLambertMaterial({color: 0x15803d, side: THREE.DoubleSide});
+            let leafCount = 8;
+            for(let i=0; i<leafCount; i++) {
+                let leafGroup = new THREE.Group();
+                let leafGeo = new THREE.ConeGeometry(1.2, 5, 4);
+                leafGeo.rotateX(Math.PI / 2);
+                leafGeo.scale(0.3, 1, 0.1);
+                
+                let leaf = new THREE.Mesh(leafGeo, leafMat);
+                leaf.position.z = 2.5;
+                leafGroup.add(leaf);
+
+                leafGroup.rotation.y = (i / leafCount) * Math.PI * 2;
+                leafGroup.rotation.x = 0.4 + Math.random() * 0.1;
+                leafGroup.position.set(trunk.position.x, 6.8, trunk.position.z);
+
+                tree.add(leafGroup);
+            }
+
+            return tree;
+        }
+
+        function buildEnvironment() {
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(280, 480), new THREE.MeshLambertMaterial({color: 0xfde047}));
+            ground.rotation.x = -Math.PI/2;
+            scene.add(ground);
+
+            const path = new THREE.Mesh(new THREE.PlaneGeometry(18, 480), new THREE.MeshLambertMaterial({color: 0xfef08a}));
+            path.rotation.x = -Math.PI/2; path.position.y = 0.02;
+            scene.add(path);
+
+            const river = new THREE.Mesh(new THREE.PlaneGeometry(170, 24), new THREE.MeshLambertMaterial({color: 0x0284c7, transparent: true, opacity: 0.88}));
+            river.rotation.x = -Math.PI/2; river.position.set(0, 0.05, -75);
+            scene.add(river);
+
+            const riverBankMat = new THREE.MeshLambertMaterial({color: 0x78350f});
+            const bankL = new THREE.Mesh(new THREE.BoxGeometry(75, 0.6, 26), riverBankMat); bankL.position.set(-45, 0.2, -75);
+            const bankR = new THREE.Mesh(new THREE.BoxGeometry(75, 0.6, 26), riverBankMat); bankR.position.set(45, 0.2, -75);
+            scene.add(bankL, bankR);
+
+            const wallMat = new THREE.MeshLambertMaterial({color: 0xd97706});
+            const wallGeo = new THREE.BoxGeometry(2, 22, 300);
+            let wallLeft = new THREE.Mesh(wallGeo, wallMat); wallLeft.position.set(-85, 11, -100);
+            let wallRight = new THREE.Mesh(wallGeo, wallMat); wallRight.position.set(85, 11, -100);
+            let wallBack = new THREE.Mesh(new THREE.BoxGeometry(170, 22, 2), wallMat); wallBack.position.set(0, 11, 40);
+            scene.add(wallLeft, wallRight, wallBack);
+
+            const rockGeo = new THREE.DodecahedronGeometry(1.8, 0);
+            const rockMat = new THREE.MeshLambertMaterial({color: 0xb45309});
+
+            for(let i=0; i<70; i++) {
+                let x = (Math.random()-0.5)*150;
+                let z = Math.random()*-220 + 30;
+                if(Math.abs(x) < 13) x += (x>0?13:-13); 
+                if(z > -88 && z < -62) continue; 
+                
+                if(Math.random() > 0.3) {
+                    let palm = createPalmTree();
+                    palm.position.set(x, 0, z);
+                    let scale = 0.8 + Math.random()*0.5; palm.scale.set(scale, scale, scale);
+                    scene.add(palm);
+                } else {
+                    let r = new THREE.Mesh(rockGeo, rockMat);
+                    r.position.set(x, 0.6, z); r.rotation.set(Math.random(), Math.random(), Math.random());
+                    scene.add(r);
+                }
+            }
+        }
+
+        function createBridge() {
+            const bridgeGroup = new THREE.Group();
+            bridgeGroup.position.set(0, 0.3, -75);
+
+            const deckMat = new THREE.MeshLambertMaterial({color: 0x854d0e});
+            const deck = new THREE.Mesh(new THREE.BoxGeometry(11, 0.5, 26), deckMat);
+            deck.position.y = 0.2;
+            bridgeGroup.add(deck);
+
+            const railMat = new THREE.MeshLambertMaterial({color: 0x713f12});
+            const postGeo = new THREE.CylinderGeometry(0.2, 0.2, 2.2, 8);
+            const railGeo = new THREE.BoxGeometry(0.3, 0.3, 26);
+
+            const railLeft = new THREE.Mesh(railGeo, railMat); railLeft.position.set(-5.2, 1.4, 0);
+            const railRight = new THREE.Mesh(railGeo, railMat); railRight.position.set(5.2, 1.4, 0);
+            bridgeGroup.add(railLeft, railRight);
+
+            for(let z = -12; z <= 12; z += 4) {
+                let pL = new THREE.Mesh(postGeo, railMat); pL.position.set(-5.2, 0.8, z);
+                let pR = new THREE.Mesh(postGeo, railMat); pR.position.set(5.2, 0.8, z);
+                bridgeGroup.add(pL, pR);
+            }
+
+            scene.add(bridgeGroup);
+        }
+
+        function createWand() {
+            wand = new THREE.Group();
+
+            // Rainbow Wand Stick
+            const rainbowTex = createRainbowTexture();
+            const stickMat = new THREE.MeshLambertMaterial({ map: rainbowTex });
+            const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.045, 0.85, 16), stickMat);
+            stick.rotation.x = Math.PI/2; stick.position.z = -0.4;
+            
+            // Rainbow Star Tip
+            const starGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.06, 5);
+            wandStarMat = new THREE.MeshLambertMaterial({color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.9});
+            const star = new THREE.Mesh(starGeo, wandStarMat);
+            star.rotation.x = Math.PI/2; star.position.z = -0.85;
+            
+            wand.add(stick, star);
+            wand.position.set(0.4, -0.3, -0.6); 
+            camera.add(wand);
+            scene.add(camera);
+        }
+
+        function spawnScrolls() {
+            materiData.forEach(d => {
+                let g = new THREE.Group();
+                g.userData = { type: 'scroll' };
+                
+                let p = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.8), new THREE.MeshLambertMaterial({color: 0xfffbeb, side: THREE.DoubleSide}));
+                let rL = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,2), new THREE.MeshLambertMaterial({color:0xb45309})); rL.position.x=-1.25;
+                let rR = rL.clone(); rR.position.x=1.25;
+                g.add(p, rL, rR);
+                g.position.set(d.pos.x, 2, d.pos.z);
+                
+                let ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.15, 8, 32), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                ring.rotation.x = -Math.PI/2; ring.position.set(d.pos.x, 0.2, d.pos.z);
+                
+                scene.add(g, ring);
+                scrolls.push({ group: g, ring: ring, data: d, offset: Math.random()*10, claimed: false, read: false });
+            });
+        }
+
+        function buildGhostMesh(isBoss=false) {
+            let g = new THREE.Group();
+            g.userData = { type: isBoss ? 'boss' : 'ghost' };
+            
+            const ghostBodyColor = isBoss ? 0xa855f7 : 0x171717;
+            const mat = new THREE.MeshLambertMaterial({color: ghostBodyColor, transparent: true, opacity: 0.95});
+            
+            let headGeo = new THREE.SphereGeometry(1, 16, 16, 0, Math.PI*2, 0, Math.PI/2);
+            let head = new THREE.Mesh(headGeo, mat); head.position.y = 1;
+            let body = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 16), mat); body.position.y = 0.5;
+            
+            for(let i=0; i<8; i++) {
+                let s = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), mat);
+                let angle = (i/8)*Math.PI*2;
+                s.position.set(Math.cos(angle)*0.85, 0, Math.sin(angle)*0.85);
+                g.add(s);
+            }
+
+            const eyeColor = isBoss ? 0x1e1b4b : 0xffffff; 
+            const eyeMat = new THREE.MeshBasicMaterial({color: eyeColor});
+            const mouthMat = new THREE.MeshBasicMaterial({color: 0x0a0a0a});
+
+            let eL = new THREE.Mesh(new THREE.SphereGeometry(0.2), eyeMat); eL.position.set(-0.35, 1.2, -0.88);
+            let eR = new THREE.Mesh(new THREE.SphereGeometry(0.2), eyeMat); eR.position.set(0.35, 1.2, -0.88);
+            
+            if(!isBoss) {
+                const pupilMat = new THREE.MeshBasicMaterial({color: 0x000000});
+                let pL = new THREE.Mesh(new THREE.SphereGeometry(0.08), pupilMat); pL.position.set(-0.35, 1.2, -0.98);
+                let pR = new THREE.Mesh(new THREE.SphereGeometry(0.08), pupilMat); pR.position.set(0.35, 1.2, -0.98);
+                g.add(pL, pR);
+            }
+
+            let mouth = new THREE.Mesh(new THREE.SphereGeometry(0.18), mouthMat); mouth.position.set(0, 0.88, -0.95);
+            
+            if(isBoss) {
+                mouth.scale.set(1.5, 2, 1);
+            } else {
+                mouth.scale.set(1.2, 1.2, 1);
+                
+                const teethMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+                for(let t = 0; t < 3; t++) {
+                    let toothGeo = new THREE.ConeGeometry(0.05, 0.14, 4);
+                    toothGeo.rotateX(Math.PI);
+                    let tooth = new THREE.Mesh(toothGeo, teethMat);
+                    tooth.position.set(-0.1 + t * 0.1, 0.94, -1.02);
+                    g.add(tooth);
+                }
+                for(let t = 0; t < 2; t++) {
+                    let toothGeo = new THREE.ConeGeometry(0.04, 0.12, 4);
+                    let tooth = new THREE.Mesh(toothGeo, teethMat);
+                    tooth.position.set(-0.05 + t * 0.1, 0.8, -1.02);
+                    g.add(tooth);
+                }
+            }
+
+            g.add(head, body, eL, eR, mouth);
+
+            if(isBoss) {
+                g.scale.set(3.2, 3.2, 3.2);
+                let crown = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 6), new THREE.MeshLambertMaterial({color: 0xfacc15, emissive:0xb45309}));
+                crown.position.y = 2.4; crown.rotation.x = -0.1;
+                g.add(crown);
+            }
+            
+            return g;
+        }
+
+        function spawnGhosts() {
+            // Hantu Penjaga Jembatan (Bisa menembak)
+            const bridgeGhostPositions = [
+                { x: 0, z: -68 },
+                { x: -2.5, z: -75 },
+                { x: 2.5, z: -82 }
+            ];
+
+            bridgeGhostPositions.forEach((pos, idx) => {
+                let mesh = buildGhostMesh(false);
+                mesh.position.set(pos.x, 1.5, pos.z);
+                scene.add(mesh);
+                ghosts.push({ mesh, isHit: false, startX: pos.x, startZ: pos.z, offset: idx, speed: 0.3, canShoot: true, lastShot: 0 });
+            });
+
+            // Hantu-hantu lainnya di jalur petualangan
+            for(let i=0; i<9; i++) {
+                let mesh = buildGhostMesh(false);
+                let x = (Math.random()>0.5?1:-1) * (Math.random()*15 + 8);
+                let z = -15 - (i * 18);
+                if(z < -60 && z > -90) z -= 30; 
+                mesh.position.set(x, 1, z);
+                scene.add(mesh);
+                ghosts.push({ mesh, isHit: false, startX: x, startZ: z, offset: Math.random()*10, speed: 0.8 + Math.random()*0.5, canShoot: false, lastShot: 0 });
+            }
+        }
+
+        function spawnBossMinions(pos) {
+            state.bossMinionsCount = 3;
+            for(let i=0; i<3; i++) {
+                let mesh = buildGhostMesh(false);
+                let offsetX = (i - 1) * 6;
+                mesh.position.set(pos.x + offsetX, 1.5, pos.z + 4);
+                scene.add(mesh);
+                ghosts.push({
+                    mesh, isHit: false, startX: pos.x + offsetX, startZ: pos.z + 4,
+                    offset: i*1.5, speed: 1.2, canShoot: true, lastShot: clock.getElapsedTime() + i*0.5,
+                    isBossMinion: true
+                });
+            }
+        }
+
+        function spawnBoss() {
+            let mesh = buildGhostMesh(true);
+            mesh.position.set(0, 1, -170); 
+            scene.add(mesh);
+            bossGhost = { mesh, hits: 0, requiredHits: 1, lastShot: 0, isDead: false, startX: 0 };
+        }
+
+        function buildGate() {
+            gateGroup = new THREE.Group(); gateGroup.position.set(0,0,-190);
+            
+            let pGeo = new THREE.CylinderGeometry(2.5, 2.5, 18, 16);
+            let pMat = new THREE.MeshLambertMaterial({color: 0xf8fafc});
+            let pL = new THREE.Mesh(pGeo,pMat); pL.position.set(-12, 9, 0);
+            let pR = new THREE.Mesh(pGeo,pMat); pR.position.set(12, 9, 0);
+
+            let domeGeo = new THREE.SphereGeometry(3, 16, 16, 0, Math.PI*2, 0, Math.PI/2);
+            let domeMat = new THREE.MeshLambertMaterial({color: 0xfacc15, emissive: 0xb45309, emissiveIntensity: 0.3});
+            let domeL = new THREE.Mesh(domeGeo, domeMat); domeL.position.set(-12, 18, 0);
+            let domeR = new THREE.Mesh(domeGeo, domeMat); domeR.position.set(12, 18, 0);
+            
+            let top = new THREE.Mesh(new THREE.BoxGeometry(30, 4, 6), new THREE.MeshLambertMaterial({color: 0xf59e0b})); top.position.set(0,19,0);
+            
+            let dGeo = new THREE.BoxGeometry(11.8, 17, 1);
+            let dMat = new THREE.MeshLambertMaterial({color: 0x78350f}); 
+            
+            let gl = new THREE.Group(); gl.position.set(-12, 8.5, 0);
+            let dL = new THREE.Mesh(dGeo, dMat); dL.position.x = 5.9; gl.add(dL);
+            
+            let gr = new THREE.Group(); gr.position.set(12, 8.5, 0);
+            let dR = new THREE.Mesh(dGeo, dMat); dR.position.x = -5.9; gr.add(dR);
+
+            gateLeft = gl; gateRight = gr;
+            gateGroup.add(pL, pR, domeL, domeR, top, gl, gr);
+            scene.add(gateGroup);
+        }
+
+        function createDustEffect() {
+            for(let i=0; i<40; i++) {
+                let p = new THREE.Mesh(new THREE.SphereGeometry(0.15, 4, 4), new THREE.MeshBasicMaterial({color: 0xfde047, transparent: true, opacity: 0.4}));
+                p.position.set((Math.random()-0.5)*100, Math.random()*8, -Math.random()*190);
+                scene.add(p);
+                dustParticles.push({ mesh: p, speed: 0.05 + Math.random()*0.05 });
+            }
+        }
+
+        function setupControls() {
+            document.addEventListener('keydown', e => {
+                let k = e.key.toLowerCase();
+                if(k === ' ') { keys.space = true; handleJump(); }
+                else if(keys.hasOwnProperty(k)) keys[k] = true;
+            });
+            document.addEventListener('keyup', e => {
+                let k = e.key.toLowerCase();
+                if(k === ' ') keys.space = false;
+                else if(keys.hasOwnProperty(k)) keys[k] = false;
+            });
+
+            if(!isMobile) {
+                document.getElementById('crosshair').style.display = 'block';
+                const cvs = document.getElementById('game-canvas');
+                cvs.addEventListener('click', () => {
+                    if(state.running && !state.paused && !pointerLocked) cvs.requestPointerLock();
+                });
+                document.addEventListener('pointerlockchange', () => pointerLocked = (document.pointerLockElement === cvs));
+                document.addEventListener('mousemove', e => {
+                    if(pointerLocked && !state.paused) {
+                        camera.rotation.y -= e.movementX * 0.0025;
+                        camera.rotation.x -= e.movementY * 0.0025;
+                        camera.rotation.x = Math.max(-1.5, Math.min(1.5, camera.rotation.x)); 
+                    }
+                });
+                document.addEventListener('mousedown', e => { if(pointerLocked && e.button===0 && !state.paused) playerShoot(); });
+            } else {
+                document.getElementById('mobile-controls').style.display = 'block';
+                document.getElementById('crosshair').style.display = 'block';
+                
+                const jz = document.getElementById('joystick-zone'), jk = document.getElementById('joystick-knob');
+                let jcx=0, jcy=0, maxR=0;
+                const updateJ = () => { let r=jz.getBoundingClientRect(); jcx=r.left+r.width/2; jcy=r.top+r.height/2; maxR=r.width/2 - 35; };
+                const moveJ = e => {
+                    e.preventDefault(); if(state.paused) return endJ();
+                    if(jcx===0) updateJ();
+                    let t = Array.from(e.touches).find(t => Math.hypot(t.clientX-jcx, t.clientY-jcy)<150);
+                    if(t) {
+                        joy.active = true; let dx = t.clientX-jcx, dy = t.clientY-jcy;
+                        let dist = Math.hypot(dx,dy);
+                        if(dist>maxR){ dx=(dx/dist)*maxR; dy=(dy/dist)*maxR; }
+                        jk.style.transform = `translate(${dx}px, ${dy}px)`;
+                        joy.x = dx/maxR; joy.y = dy/maxR;
+                    } else endJ();
+                };
+                const endJ = () => { joy.active=false; joy.x=0; joy.y=0; jk.style.transform='translate(0,0)'; };
+                jz.addEventListener('touchstart', moveJ, {passive:false}); jz.addEventListener('touchmove', moveJ, {passive:false});
+                jz.addEventListener('touchend', endJ); window.addEventListener('resize', updateJ);
+
+                const lz = document.getElementById('look-zone');
+                let lx=0, ly=0;
+                lz.addEventListener('touchstart', e => {
+                    if(lookTouchId===null) { let t=e.changedTouches[0]; lookTouchId=t.identifier; lx=t.clientX; ly=t.clientY; }
+                }, {passive:false});
+                lz.addEventListener('touchmove', e => {
+                    e.preventDefault(); if(state.paused) return;
+                    for(let t of e.changedTouches) {
+                        if(t.identifier === lookTouchId) {
+                            camera.rotation.y -= (t.clientX - lx)*0.006;
+                            camera.rotation.x -= (t.clientY - ly)*0.006;
+                            camera.rotation.x = Math.max(-1.5, Math.min(1.5, camera.rotation.x));
+                            lx=t.clientX; ly=t.clientY;
+                        }
+                    }
+                }, {passive:false});
+                const endL = e => { for(let t of e.changedTouches) if(t.identifier===lookTouchId) lookTouchId=null; };
+                lz.addEventListener('touchend', endL);
+
+                document.getElementById('shoot-btn').addEventListener('touchstart', e => { e.preventDefault(); playerShoot(); }, {passive:false});
+                document.getElementById('jump-btn').addEventListener('touchstart', e => { e.preventDefault(); handleJump(); }, {passive:false});
+            }
+        }
+
+        function handleJump() {
+            if(state.isGrounded && !state.paused) {
+                state.velocityY = 0.22;
+                state.isGrounded = false;
+                audio.sfx('jump');
+            }
+        }
+
+        function playerShoot() {
+            if(state.paused) return;
+            audio.sfx('shoot');
+            wand.rotation.x = 0.5; setTimeout(() => { if(wand) wand.rotation.x = 0; }, 100);
+
+            let pMesh = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), new THREE.MeshBasicMaterial({color: 0xfef08a}));
+            let pos = new THREE.Vector3(); wand.children[1].getWorldPosition(pos);
+            pMesh.position.copy(pos); scene.add(pMesh);
+
+            let dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            playerProjs.push({ mesh: pMesh, dir: dir, life: 60 });
+        }
+
+        function ghostShoot(g) {
+            if(state.paused) return;
+            let pMesh = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({color: 0xef4444})); 
+            let pos = g.mesh.position.clone(); pos.y += 1;
+            pMesh.position.copy(pos); scene.add(pMesh);
+            
+            let dir = new THREE.Vector3().subVectors(camera.position, pos).normalize();
+            dir.x += (Math.random()-0.5)*0.15;
+            
+            enemyProjs.push({ mesh: pMesh, dir: dir, life: 100 });
+            audio.sfx('shoot');
+        }
+
+        function bossShoot() {
+            if(state.paused || bossGhost.isDead) return;
+            let pMesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), new THREE.MeshBasicMaterial({color: 0xc084fc})); 
+            let pos = bossGhost.mesh.position.clone(); pos.y += 3;
+            pMesh.position.copy(pos); scene.add(pMesh);
+            
+            let dir = new THREE.Vector3().subVectors(camera.position, pos).normalize();
+            dir.x += (Math.random()-0.5)*0.1;
+            
+            enemyProjs.push({ mesh: pMesh, dir: dir, life: 120 });
+            audio.sfx('shoot');
+        }
+
+        function createExplosion(pos, color) {
+            for(let i=0; i<20; i++) {
+                let p = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.3), new THREE.MeshBasicMaterial({color, transparent:true}));
+                p.position.copy(pos); scene.add(p);
+                particles.push({ mesh: p, vel: new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.5, (Math.random()-0.5)*0.6), life: 1 });
+            }
+        }
+
+        function drawMinimap() {
+            const canvas = document.getElementById('minimap');
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 110, 110);
+
+            const mapScale = 0.45;
+            const cx = 55, cy = 55;
+
+            let bridgeDz = (-75 - camera.position.z) * mapScale;
+            if(Math.abs(bridgeDz) < 50) {
+                ctx.fillStyle = '#854d0e';
+                ctx.fillRect(cx - 6, cy + bridgeDz - 8, 12, 16);
+            }
+
+            ctx.fillStyle = '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ef4444';
+            ghosts.forEach(g => {
+                if(!g.isHit) {
+                    let dx = (g.mesh.position.x - camera.position.x) * mapScale;
+                    let dz = (g.mesh.position.z - camera.position.z) * mapScale;
+                    if(Math.hypot(dx, dz) < 50) {
+                        ctx.beginPath();
+                        ctx.arc(cx + dx, cy + dz, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            });
+
+            ctx.fillStyle = '#eab308';
+            scrolls.forEach(s => {
+                let dx = (s.group.position.x - camera.position.x) * mapScale;
+                let dz = (s.group.position.z - camera.position.z) * mapScale;
+                if(Math.hypot(dx, dz) < 50) {
+                    ctx.beginPath();
+                    ctx.arc(cx + dx, cy + dz, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+        }
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+            if(!state.running) { renderer.render(scene, camera); return; }
+
+            const time = clock.getElapsedTime();
+
+            // Dynamic Animated Rainbow Star Effect
+            if(wandStarMat) {
+                const rainbowHue = (time * 0.4) % 1;
+                wandStarMat.color.setHSL(rainbowHue, 1, 0.6);
+                wandStarMat.emissive.setHSL(rainbowHue, 1, 0.4);
+            }
+
+            if(!state.paused) {
+                let oldZ = camera.position.z;
+
+                if(!state.isGrounded) {
+                    camera.position.y += state.velocityY;
+                    state.velocityY -= 0.012; 
+                    if(camera.position.y <= 1.8) {
+                        camera.position.y = 1.8;
+                        state.isGrounded = true;
+                        state.velocityY = 0;
+                    }
+                }
+
+                let speed = 0.35;
+                let fw = new THREE.Vector3(); camera.getWorldDirection(fw); fw.y=0; fw.normalize();
+                let rt = new THREE.Vector3().crossVectors(fw, new THREE.Vector3(0,1,0)).normalize();
+
+                if(isMobile && joy.active) {
+                    camera.position.addScaledVector(fw, -joy.y * speed); camera.position.addScaledVector(rt, joy.x * speed);
+                } else {
+                    if(keys.w) camera.position.addScaledVector(fw, speed);
+                    if(keys.s) camera.position.addScaledVector(fw, -speed);
+                    if(keys.a) camera.position.addScaledVector(rt, -speed);
+                    if(keys.d) camera.position.addScaledVector(rt, speed);
+                }
+                
+                if (camera.position.z < -63 && camera.position.z > -87) {
+                    if (Math.abs(camera.position.x) > 5.2) {
+                        if (oldZ >= -63) camera.position.z = -63;
+                        else if (oldZ <= -87) camera.position.z = -87;
+                        else {
+                            camera.position.x = Math.sign(camera.position.x) * 5.2;
+                        }
+                    }
+                }
+
+                if(camera.position.x > 82) camera.position.x = 82; 
+                if(camera.position.x < -82) camera.position.x = -82;
+                if(camera.position.z > 35) camera.position.z = 35;
+                if(!state.gateOpen && camera.position.z < -185) camera.position.z = -185;
+                
+                wand.position.y = -0.3 + Math.sin(time*4)*0.02;
+
+                raycaster.setFromCamera(centerScreen, camera);
+                let targets = [];
+                ghosts.forEach(g => { if(!g.isHit) targets.push(g.mesh); });
+                if(bossGhost && !bossGhost.isDead) targets.push(bossGhost.mesh);
+                scrolls.forEach(s => targets.push(s.group));
+
+                let intersects = raycaster.intersectObjects(targets, true);
+                let crosshairEl = document.getElementById('crosshair');
+                
+                if(intersects.length > 0) {
+                    let obj = intersects[0].object;
+                    let isEnemy = false, isScroll = false;
+                    let curr = obj;
+                    while(curr) {
+                        if(curr.userData.type === 'ghost' || curr.userData.type === 'boss') isEnemy = true;
+                        if(curr.userData.type === 'scroll') isScroll = true;
+                        curr = curr.parent;
+                    }
+
+                    if(isEnemy) {
+                        crosshairEl.classList.add('aiming-enemy');
+                        crosshairEl.classList.remove('aiming-scroll');
+                    } else if(isScroll) {
+                        crosshairEl.classList.add('aiming-scroll');
+                        crosshairEl.classList.remove('aiming-enemy');
+                    } else {
+                        crosshairEl.classList.remove('aiming-enemy', 'aiming-scroll');
+                    }
+                } else {
+                    crosshairEl.classList.remove('aiming-enemy', 'aiming-scroll');
+                }
+
+                drawMinimap();
+            }
+
+            let nearScroll = false;
+            scrolls.forEach(s => {
+                s.group.position.y = 2.5 + Math.sin(time*2 + s.offset)*0.2;
+                s.group.rotation.y += 0.015;
+                s.ring.material.color.setHSL((time*0.3 + s.offset)%1, 0.8, 0.7); 
+                
+                if(camera.position.distanceTo(s.group.position) < 6) {
+                    nearScroll = true;
+                    if(!keys.w && !keys.s && !joy.active && !state.paused) {
+                        if(!s.hoverTime) s.hoverTime = time;
+                        if(time - s.hoverTime > 0.6) { openMateri(s); s.hoverTime = null; }
+                    } else s.hoverTime = null;
+                }
+            });
+            document.getElementById('interaction-prompt').style.display = nearScroll ? 'block' : 'none';
+
+            ghosts.forEach(g => {
+                if(!g.isHit) {
+                    g.mesh.position.y = 1.3 + Math.sin(time*2.5 + g.offset)*0.4;
+                    g.mesh.position.x = g.startX + Math.sin(time * g.speed + g.offset)*3; 
+                    g.mesh.lookAt(camera.position);
+
+                    let dist = camera.position.distanceTo(g.mesh.position);
+
+                    // Tembakan Hantu Kecil saat pemain terlihat/dekat
+                    if(g.canShoot && !state.paused && dist < 35 && camera.position.z > g.mesh.position.z - 5) {
+                        if(!g.lastShot) g.lastShot = time + Math.random()*2;
+                        if(time - g.lastShot > 3.0) {
+                            ghostShoot(g);
+                            g.lastShot = time;
+                        }
+                    }
+
+                    if(!state.paused && time - state.lastDamageTime > 2.0 && dist < 2.5) {
+                        takeDamage(time);
+                    }
+                }
+            });
+
+            if(bossGhost && !bossGhost.isDead) {
+                bossGhost.mesh.position.y = 1 + Math.sin(time*3)*0.8;
+                bossGhost.mesh.lookAt(camera.position);
+                
+                if(camera.position.z < -110) {
+                    document.getElementById('boss-hp-bar-container').classList.remove('hidden');
+                }
+
+                if(!state.paused && camera.position.z < -120) {
+                    if(time - bossGhost.lastShot > 2.5) { bossShoot(); bossGhost.lastShot = time; }
+                    bossGhost.mesh.position.x = Math.sin(time*0.5)*15; 
+                    
+                    if(time - state.lastDamageTime > 2.0 && camera.position.distanceTo(bossGhost.mesh.position) < 4.5) {
+                        takeDamage(time);
+                    }
+                }
+            }
+
+            for(let i=playerProjs.length-1; i>=0; i--) {
+                let p = playerProjs[i]; p.mesh.position.addScaledVector(p.dir, 1.5); p.life--;
+                let hit = false;
+                
+                for(let g of ghosts) {
+                    if(!g.isHit && p.mesh.position.distanceTo(g.mesh.position) < 2.5) {
+                        g.isHit = true; hit = true; scene.remove(g.mesh); 
+                        createExplosion(g.mesh.position, g.isBossMinion ? 0xc084fc : 0xfacc15);
+
+                        if(g.isBossMinion) {
+                            state.bossMinionsCount--;
+                            audio.sfx('hit');
+                            checkGateStatus();
+                        } else {
+                            openQuiz(false);
+                        }
+                        break;
+                    }
+                }
+                
+                if(!hit && bossGhost && !bossGhost.isDead && p.mesh.position.distanceTo(bossGhost.mesh.position) < 5) {
+                    hit = true; createExplosion(bossGhost.mesh.position, 0xc084fc);
+                    openQuiz(true);
+                }
+
+                if(hit || p.life<=0) { scene.remove(p.mesh); playerProjs.splice(i,1); }
+            }
+
+            for(let i=enemyProjs.length-1; i>=0; i--) {
+                let p = enemyProjs[i]; p.mesh.position.addScaledVector(p.dir, 0.8); p.life--;
+                if(!state.paused && time - state.lastDamageTime > 2.0 && p.mesh.position.distanceTo(camera.position) < 2.0) {
+                    scene.remove(p.mesh); enemyProjs.splice(i,1); takeDamage(time);
+                } else if(p.life<=0) { scene.remove(p.mesh); enemyProjs.splice(i,1); }
+            }
+
+            for(let i=particles.length-1; i>=0; i--) {
+                let p = particles[i]; p.mesh.position.add(p.vel); p.life -= 0.04;
+                p.mesh.material.opacity = p.life;
+                if(p.life<=0) { scene.remove(p.mesh); particles.splice(i,1); }
+            }
+
+            dustParticles.forEach(d => {
+                d.mesh.position.z += d.speed;
+                if(d.mesh.position.z > 30) d.mesh.position.z = -190;
+            });
+
+            if(state.gateOpen && gateLeft.rotation.y < 1.6) { 
+                gateLeft.rotation.y += 0.015; gateRight.rotation.y -= 0.015; 
+            }
+            if(state.gateOpen && camera.position.z < -200) showVictory();
+
+            renderer.render(scene, camera);
+        }
+
+        window.startGame = () => {
+            if(!actx) { 
+                actx = new (window.AudioContext || window.webkitAudioContext)(); 
+                audio.playMelody(); 
+            }
+            if(actx && actx.state === 'suspended') actx.resume();
+            
+            const introScreen = document.getElementById('intro-screen');
+            if(introScreen) introScreen.classList.add('hidden');
+            const hud = document.getElementById('hud');
+            if(hud) hud.classList.remove('hidden');
+            
+            state.running = true;
+            if(!scene) initThreeJS();
+            setupControls();
+            if(!isMobile) document.getElementById('game-canvas').requestPointerLock();
+        };
+
+        // Safe Loading Screen Initialization
+        function initLoading() {
+            let loadProgress = 0;
+            const loadingBar = document.getElementById('loading-bar-fill');
+            const loadingText = document.getElementById('loading-text');
+            const loadingContainer = document.getElementById('loading-container');
+            const startBtn = document.getElementById('start-btn');
+
+            const loadInterval = setInterval(() => {
+                loadProgress += Math.random() * 25 + 10;
+                if(loadProgress >= 100) {
+                    loadProgress = 100;
+                    clearInterval(loadInterval);
+                    setTimeout(() => {
+                        if(loadingContainer) loadingContainer.classList.add('hidden');
+                        if(loadingText) loadingText.innerText = "Misi Madinah Siap!";
+                        if(startBtn) {
+                            startBtn.classList.remove('hidden');
+                            startBtn.classList.add('animate-pop');
+                            startBtn.onclick = window.startGame;
+                        }
+                    }, 200);
+                }
+                if(loadingBar) loadingBar.style.width = `${loadProgress}%`;
+            }, 80);
+        }
+
+        if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', initLoading);
+        } else {
+            initLoading();
+        }
+
+        window.openModal = (id) => { document.getElementById(id).classList.remove('hidden'); };
+        window.closeModal = (id) => { document.getElementById(id).classList.add('hidden'); };
+
+        window.openMateri = (scrollObj) => {
+            if(state.paused) return; state.paused = true; document.exitPointerLock?.();
+            document.getElementById('crosshair').classList.remove('aiming-scroll');
+            
+            scrollObj.read = true;
+            const data = scrollObj.data;
+            document.getElementById('materi-title').innerText = data.title;
+            document.getElementById('materi-content').innerText = data.text;
+            
+            const bonusEl = document.getElementById('materi-bonus');
+            if(data.bonus && !scrollObj.claimed) {
+                scrollObj.claimed = true;
+                if(state.hp < state.maxHp) {
+                    state.hp++;
+                    audio.sfx('heal');
+                    document.getElementById('heal-flash').classList.add('heal-overlay');
+                    setTimeout(()=> document.getElementById('heal-flash').classList.remove('heal-overlay'), 800);
+                    updateHUD();
+                }
+                bonusEl.classList.remove('hidden');
+            } else {
+                bonusEl.classList.add('hidden');
+            }
+            openModal('materi-modal');
+            checkGateStatus();
+        };
+
+        window.closeMateri = () => { 
+            closeModal('materi-modal'); 
+            setTimeout(() => { 
+                state.paused = false; 
+                if(!isMobile) document.getElementById('game-canvas').requestPointerLock(); 
+            }, 100); 
+        };
+
+        function defeatBoss() {
+            if(!bossGhost || bossGhost.isDead) return;
+            bossGhost.isDead = true; 
+            if(bossGhost.mesh && bossGhost.mesh.parent) {
+                scene.remove(bossGhost.mesh);
+            }
+            document.getElementById('boss-hp-fill').style.width = '0%';
+            createExplosion(bossGhost.mesh.position, 0xc084fc);
+            
+            spawnBossMinions(bossGhost.mesh.position);
+
+            document.getElementById('boss-hp-title').innerText = "⚠️ 3 Minion Boss Muncul!";
+            audio.sfx('win');
+            checkGateStatus();
+        }
+
+        function checkGateStatus() {
+            const totalScrolls = materiData.length;
+            const scrollsRead = scrolls.filter(s => s.read).length;
+            const totalQuizzes = quizData.length;
+            const quizzesAnswered = totalQuizzes - state.qQueue.length;
+            const bossDefeated = bossGhost ? bossGhost.isDead : false;
+            const minionsDefeated = bossDefeated && state.bossMinionsCount <= 0;
+
+            const gateStatusEl = document.getElementById('gate-status');
+
+            if(scrollsRead >= totalScrolls && quizzesAnswered >= totalQuizzes && bossDefeated && minionsDefeated) {
+                state.gateOpen = true;
+                if(gateStatusEl) {
+                    gateStatusEl.innerHTML = "🔓 GERBANG TERBUKA!";
+                    gateStatusEl.className = "mt-2 text-xs font-black text-white bg-emerald-500 py-1 px-3 rounded-lg inline-block animate-pulse shadow-md border-emerald-400";
+                }
+            } else {
+                state.gateOpen = false;
+                if(gateStatusEl) {
+                    if(!bossDefeated) {
+                        gateStatusEl.innerHTML = `🔒 Kalahkan Boss Penjaga! (${quizzesAnswered}/${totalQuizzes} Quiz)`;
+                        gateStatusEl.className = "mt-2 text-xs font-bold text-slate-600 bg-slate-100 py-1 px-2.5 rounded-lg inline-block border border-slate-200";
+                    } else if(!minionsDefeated) {
+                        gateStatusEl.innerHTML = `⚠️ Sisa Minion: ${state.bossMinionsCount}`;
+                        gateStatusEl.className = "mt-2 text-xs font-black text-amber-900 bg-amber-300 py-1 px-3 rounded-lg inline-block animate-pulse shadow-md border-amber-400";
+                    } else {
+                        gateStatusEl.innerHTML = `📜 Misi: Surat ${scrollsRead}/${totalScrolls} & Quiz ${quizzesAnswered}/${totalQuizzes}`;
+                        gateStatusEl.className = "mt-2 text-xs font-bold text-amber-800 bg-amber-100 py-1 px-2.5 rounded-lg inline-block border border-amber-300";
+                    }
+                }
+            }
+        }
+
+        function openQuiz(isBoss = false) {
+            if(state.qQueue.length === 0) {
+                if(isBoss && bossGhost && !bossGhost.isDead) {
+                    defeatBoss();
+                }
+                checkGateStatus();
+                return;
+            }
+
+            state.paused = true; 
+            if(document.pointerLockElement) document.exitPointerLock?.();
+            document.getElementById('crosshair').classList.remove('aiming-enemy');
+            
+            state.isBossQuiz = isBoss;
+            state.qCurrent = state.qQueue.shift(); 
+
+            document.getElementById('quiz-q').innerText = state.qCurrent.q;
+            document.getElementById('quiz-modal').classList.remove('hidden');
+            document.getElementById('quiz-mc').classList.add('hidden');
+            document.getElementById('quiz-tf').classList.add('hidden');
+            document.getElementById('feedback-view').classList.add('hidden');
+            
+            if(state.qCurrent.type === 'mc') {
+                document.getElementById('quiz-mc').classList.remove('hidden');
+                for(let i=0; i<4; i++) document.getElementById(`opt-${i}`).innerText = state.qCurrent.opts[i];
+            } else {
+                document.getElementById('quiz-tf').classList.remove('hidden');
+            }
+        }
+
+        window.submitAnswer = (idx) => processAnswer(idx === state.qCurrent.ans);
+        window.submitAnswerTF = (val) => processAnswer(val === state.qCurrent.ans);
+
+        function processAnswer(isCorrect) {
+            document.getElementById('quiz-mc').classList.add('hidden');
+            document.getElementById('quiz-tf').classList.add('hidden');
+            document.getElementById('feedback-view').classList.remove('hidden');
+            
+            const title = document.getElementById('fb-title');
+            if(isCorrect) {
+                state.score += 10; state.correct++; audio.sfx('correct');
+                title.innerText = "BENAR! ✨"; title.className = "text-3xl font-black mb-3 text-emerald-500";
+            } else {
+                audio.sfx('wrong');
+                title.innerText = "BELUM TEPAT 💡"; title.className = "text-3xl font-black mb-3 text-rose-500";
+                if(state.qQueue.length < 2 && bossGhost && !bossGhost.isDead) state.qQueue.push(state.qCurrent); 
+            }
+            document.getElementById('fb-desc').innerHTML = `<b>Penjelasan:</b><br/>${state.qCurrent.desc}`;
+            updateHUD();
+        }
+
+        window.closeQuiz = () => {
+            closeModal('quiz-modal');
+            
+            if(state.isBossQuiz && bossGhost && !bossGhost.isDead) {
+                defeatBoss();
+            }
+            checkGateStatus();
+
+            setTimeout(() => { 
+                state.paused = false; 
+                if(!isMobile && state.running) document.getElementById('game-canvas').requestPointerLock(); 
+            }, 100);
+        };
+
+        function takeDamage(time) {
+            state.lastDamageTime = time;
+            state.hp--; audio.sfx('hit');
+            
+            const df = document.getElementById('damage-flash');
+            df.classList.remove('damage-overlay');
+            void df.offsetWidth; 
+            df.classList.add('damage-overlay');
+            
+            updateHUD();
+            let fw = new THREE.Vector3(); camera.getWorldDirection(fw); fw.y=0; fw.normalize();
+            camera.position.addScaledVector(fw, -3);
+            
+            if(state.hp <= 0) {
+                state.paused = true; document.exitPointerLock?.();
+                openModal('death-modal');
+            }
+        }
+
+        window.respawn = () => {
+            state.hp = 5; updateHUD(); closeModal('death-modal');
+            camera.position.z += 30; 
+            setTimeout(() => { state.paused = false; if(!isMobile) document.getElementById('game-canvas').requestPointerLock(); }, 100);
+        }
+
+        function updateHUD() {
+            let h = ""; for(let i=0; i<state.hp; i++) h += "❤️";
+            for(let i=state.hp; i<state.maxHp; i++) h += "🖤"; 
+            document.getElementById('hearts').innerText = h;
+            
+            document.getElementById('score').innerText = state.score;
+            document.getElementById('stars').innerText = state.correct;
+            
+            let total = quizData.length;
+            let answered = total - state.qQueue.length - (state.qCurrent && document.getElementById('quiz-modal').classList.contains('hidden') ? 0 : 1);
+            if(answered < 0) answered = 0; if(answered > total) answered = total;
+            document.getElementById('progress-text').innerText = `${answered}/${total}`;
+            document.getElementById('progress-bar').style.width = (answered/total)*100 + '%';
+
+            checkGateStatus();
+        }
+
+        function showVictory() {
+            state.running = false; document.exitPointerLock?.();
+            document.getElementById('hud').classList.add('hidden');
+            if(isMobile) document.getElementById('mobile-controls').style.display = 'none';
+            document.getElementById('crosshair').style.display = 'none';
+            
+            document.getElementById('vic-score').innerText = state.score;
+            document.getElementById('vic-benar').innerText = `${state.correct} / 13`;
+            
+            let rank = "PEJUANG ILMU";
+            if(state.correct >= 12) rank = "PEMIMPIN TELADAN";
+            else if (state.correct >= 8) rank = "PELAJAR HEBAT";
+            document.getElementById('vic-rank').innerText = rank;
+
+            openModal('victory-screen'); audio.sfx('win');
+        }
+    </script>
+</body>
+</html>
+```
